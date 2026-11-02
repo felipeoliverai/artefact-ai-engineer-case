@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.venv/
+.env
+.pytest_cache/
+.DS_Store
+.streamlit/secrets.toml
+# runtime state
+sessions/
+tickets/

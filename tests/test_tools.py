@@ -57,6 +57,21 @@ def test_product_details_fuzzy_match():
     assert result["product"]["price_brl"] == 2199
 
 
+@pytest.mark.parametrize("price,expected", [(599.90, 6), (1200, 12), (439.20, 5), (120, 2), (40, 1)])
+def test_max_installments_follow_policy_tiers(price, expected):
+    assert tools.max_installments(price) == expected
+
+
+def test_product_details_include_installments():
+    card = tools.get_product_details("Yamaha C40")["product"]["credit_card"]
+    assert card["max_installments_no_interest"] == 6
+
+
+def test_promotional_product_has_no_extra_pix_discount():
+    product = tools.get_product_details("Ohana CK-20")["product"]
+    assert product["pix_price_brl"] == product["promotion"]["promotional_price_brl"] == pytest.approx(439.20)
+
+
 def test_coming_soon_is_not_available_and_suggests_alternatives():
     result = tools.get_product_details("Kala KA-ABP-CTG Barítono")
     assert result["product"]["available"] is False

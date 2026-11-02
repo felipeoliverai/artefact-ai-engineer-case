@@ -31,6 +31,19 @@ STORE_HOURS = {0: (9, 18), 1: (9, 18), 2: (9, 18), 3: (9, 18), 4: (9, 18), 5: (9
 WEEKDAYS_PT = ["segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo"]
 
 
+# (min installments, max installments, minimum installment value) — policy section 3.1
+INSTALLMENT_TIERS = [(7, 12, 100.0), (4, 6, 80.0), (1, 3, 50.0)]
+
+
+def max_installments(price: float) -> int:
+    """Largest interest-free installment count allowed for a price (policy section 3.1)."""
+    for low, high, minimum in INSTALLMENT_TIERS:
+        for n in range(high, low - 1, -1):
+            if price / n >= minimum:
+                return n
+    return 1
+
+
 # --------------------------------------------------------------------------- products
 
 def _product_summary(row: pd.Series) -> dict:
@@ -48,6 +61,8 @@ def _product_summary(row: pd.Series) -> dict:
             "discount_percent": int(row["discount_percent"]),
             "promotional_price_brl": float(row["final_price_brl"]),
         }
+        summary["pix_price_brl"] = float(row["pix_price_brl"])
+        summary["pix_note"] = "Produto já em promoção: o desconto de 5% no PIX NÃO se aplica (não é cumulativo)."
     else:
         summary["pix_price_brl"] = float(row["pix_price_brl"])
     if row["status"] == "active" and row["stock_quantity"] == 0:
@@ -115,6 +130,12 @@ def get_product_details(product_name: str) -> dict:
     details["stock_quantity"] = int(best["stock_quantity"])
     details["description"] = best["description"] or None
     details["specs"] = best["specs"]
+    n = max_installments(float(best["final_price_brl"]))
+    details["credit_card"] = {
+        "max_installments_no_interest": n,
+        "installment_value_brl": round(float(best["final_price_brl"]) / n, 2),
+        "rule": "Sem juros; parcela mínima: R$ 50 (1x–3x), R$ 80 (4x–6x), R$ 100 (7x–12x).",
+    }
     result = {"found": True, "product": details}
 
     # Ambiguous match: let the model ask the customer which one they meant.
@@ -316,7 +337,8 @@ def check_store_hours() -> dict:
         "is_open_now": is_open,
         "closes_at": f"{hours[1]:02d}:00" if is_open else None,
         "next_opening": None if is_open else next_open,
-        "note": "Feriados não estão no sistema: em feriados a loja fica fechada.",
+        "weekly_hours": "Segunda a sexta 09:00–18:00; sábado 09:00–13:00; domingo fechado.",
+        "holidays": "Fechado em feriados (datas de feriado não constam no sistema).",
     }
 
 

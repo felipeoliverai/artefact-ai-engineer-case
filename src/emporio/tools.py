@@ -273,9 +273,19 @@ def check_return_eligibility(order_id: int, email_or_phone: str, reason: str) ->
     else:
         return {**base, "eligible": None, "explanation": "Motivo inválido. Use: arrependimento, defeito ou preferencia."}
 
-    return {**base, "eligible": eligible, "explanation": explanation, "conditions": conditions,
-            "not_eligible_items": "Itens personalizados/com setup sob encomenda, liquidação 'venda final' e "
-            "boquilhas de sopro não são elegíveis para troca."}
+    result = {**base, "eligible": eligible, "explanation": explanation, "conditions": conditions,
+              "not_eligible_items": "Itens personalizados/com setup sob encomenda, liquidação 'venda final' e "
+              "boquilhas de sopro não são elegíveis para troca."}
+    if eligible:
+        result["next_step"] = "Oferecer abrir um chamado (create_support_ticket, categoria 'devolucao') para a " \
+            "equipe dar andamento."
+    elif reason != "defeito":
+        result["alternatives"] = (
+            "Se o instrumento apresentar defeito de fabricação, o cliente pode acionar a garantia: legal de "
+            f"{LEGAL_WARRANTY_DAYS} dias após o recebimento e, depois disso, a do fabricante (6 meses a 2 anos); "
+            "a loja pode intermediar. Pergunte se há algum defeito."
+        )
+    return result
 
 
 # ---------------------------------------------------------------------- store / policy

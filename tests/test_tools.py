@@ -89,6 +89,12 @@ def test_order_requires_matching_contact():
     assert tools.get_order_status(999, "anacarol.ferreira@coldmail.com")["verified"] is False
 
 
+def test_order_without_contact_asks_for_it_and_reveals_nothing():
+    result = tools.get_order_status(8)
+    assert result["verified"] is False and result["missing"] == "email_or_phone"
+    assert "status" not in result and "items" not in result
+
+
 def test_order_status_with_phone_and_delay():
     result = tools.get_order_status(8, "(67) 99654-7821")
     assert result["verified"] and result["status"] == "enviado"
@@ -97,18 +103,18 @@ def test_order_status_with_phone_and_delay():
 
 
 def test_return_after_regret_window_is_denied():
-    result = tools.check_return_eligibility(7, "leticia.rocha@jmail.com", "arrependimento")
+    result = tools.check_return_eligibility(7, "arrependimento", "leticia.rocha@jmail.com")
     assert result["eligible"] is False
 
 
 def test_return_within_window(monkeypatch):
     monkeypatch.setenv("AGENT_TODAY", "2026-02-20")
-    result = tools.check_return_eligibility(7, "leticia.rocha@jmail.com", "arrependimento")
+    result = tools.check_return_eligibility(7, "arrependimento", "leticia.rocha@jmail.com")
     assert result["eligible"] is True
 
 
 def test_return_for_undelivered_order():
-    result = tools.check_return_eligibility(13, "fernanda.ribeiro@coldmail.com", "arrependimento")
+    result = tools.check_return_eligibility(13, "arrependimento", "fernanda.ribeiro@coldmail.com")
     assert result["eligible"] is None
 
 
@@ -127,5 +133,5 @@ def test_store_hours(monkeypatch):
 
 
 def test_call_tool_handles_bad_arguments():
-    assert "error" in tools.call_tool("get_order_status", {"order_id": 1})
+    assert "error" in tools.call_tool("get_order_status", {"email_or_phone": "x@y.com"})
     assert "error" in tools.call_tool("does_not_exist", {})

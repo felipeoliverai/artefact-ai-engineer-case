@@ -20,7 +20,6 @@ emporio-cli = "emporio.cli:main"
 [dependency-groups]
 dev = [
     "pytest>=8.3",
-    "pypdf>=5.0",
 ]
 
 [build-system]

@@ -134,7 +134,6 @@ def get_product_details(product_name: str) -> dict:
     details["credit_card"] = {
         "max_installments_no_interest": n,
         "installment_value_brl": round(float(best["final_price_brl"]) / n, 2),
-        "rule": "Sem juros; parcela mínima: R$ 50 (1x–3x), R$ 80 (4x–6x), R$ 100 (7x–12x).",
     }
     result = {"found": True, "product": details}
 
@@ -152,8 +151,11 @@ def get_active_promotions() -> dict:
     promo = products[(products["discount_percent"] > 0) & products["available"]]
     return {
         "today": clock.today().isoformat(),
+        "active_campaigns": sorted(promo["promotion_name"].unique().tolist()),
         "active_promotions": [_product_summary(r) for _, r in promo.iterrows()],
-        "note": "Somente estas promoções estão ativas no sistema. Não prometa outros descontos.",
+        "note": "Somente estas promoções estão ativas. Uma campanha que não está em active_campaigns "
+        "(ex.: Black Friday, Semana do Músico) NÃO está ativa: diga isso claramente e, se quiser, "
+        "apresente estas ofertas pelo nome real delas.",
     }
 
 
@@ -174,6 +176,23 @@ def _verify_customer(order: pd.Series, email_or_phone: str) -> bool:
 
 
 def _find_verified_order(order_id: int, email_or_phone: str) -> tuple[pd.Series | None, dict | None]:
+    if int(order_id) <= 0:
+        return None, {
+            "verified": False,
+            "missing": "order_id_and_contact",
+            "message": "O cliente ainda não informou o número do pedido. Peça o número do pedido e o e-mail "
+            "ou telefone do cadastro. Não invente números de pedido.",
+        }
+    if not email_or_phone.strip():
+        # Calling with only the order number is allowed on purpose: the order id then lives
+        # in the conversation as a tool call and the model does not ask for it again.
+        return None, {
+            "verified": False,
+            "order_id": int(order_id),
+            "missing": "email_or_phone",
+            "message": "Peça o e-mail ou telefone do cadastro para confirmar a identidade e depois chame a "
+            "ferramenta de novo com o mesmo order_id.",
+        }
     orders = load_store().orders
     match = orders[orders["order_id"] == int(order_id)]
     # Same message whether the order does not exist or the contact is wrong, so the tool
@@ -196,7 +215,7 @@ def _order_items(order_id: int) -> list[dict]:
     return [{"product": r["name"], "quantity": int(r["quantity"])} for _, r in items.iterrows()]
 
 
-def get_order_status(order_id: int, email_or_phone: str) -> dict:
+def get_order_status(order_id: int, email_or_phone: str = "") -> dict:
     order, error = _find_verified_order(order_id, email_or_phone)
     if error:
         return error
@@ -231,7 +250,7 @@ def get_order_status(order_id: int, email_or_phone: str) -> dict:
     return result
 
 
-def check_return_eligibility(order_id: int, email_or_phone: str, reason: str) -> dict:
+def check_return_eligibility(order_id: int, reason: str, email_or_phone: str = "") -> dict:
     """Applies sections 4.1–4.4 and 8 of the policy manual to a specific order."""
     order, error = _find_verified_order(order_id, email_or_phone)
     if error:
@@ -301,11 +320,16 @@ def check_return_eligibility(order_id: int, email_or_phone: str, reason: str) ->
         result["next_step"] = "Oferecer abrir um chamado (create_support_ticket, categoria 'devolucao') para a " \
             "equipe dar andamento."
     elif reason != "defeito":
-        result["alternatives"] = (
-            "Se o instrumento apresentar defeito de fabricação, o cliente pode acionar a garantia: legal de "
-            f"{LEGAL_WARRANTY_DAYS} dias após o recebimento e, depois disso, a do fabricante (6 meses a 2 anos); "
-            "a loja pode intermediar. Pergunte se há algum defeito."
+        # Regret and preference share the same 7-day window: if one is closed, so is the other.
+        result["exchange_for_other_model"] = (
+            f"Não disponível: o prazo de troca por preferência ({EXCHANGE_PREFERENCE_DAYS} dias) também está encerrado."
         )
+        result["only_remaining_option"] = (
+            "Garantia, apenas se houver defeito de fabricação: legal de "
+            f"{LEGAL_WARRANTY_DAYS} dias após o recebimento e, depois, a do fabricante (6 meses a 2 anos); "
+            "a loja pode intermediar."
+        )
+        result["ask_customer"] = "O instrumento apresenta algum defeito?"
     return result
 
 
@@ -399,21 +423,21 @@ TOOL_SCHEMAS = [
     _fn("get_active_promotions", "Lista as promoções ativas hoje no sistema.", {}),
     _fn(
         "get_order_status",
-        "Consulta status, itens, rastreamento e previsão de entrega de um pedido. Exige número do pedido "
-        "e e-mail ou telefone do cliente — peça esses dados antes de chamar.",
+        "Consulta status, itens, rastreamento e previsão de entrega de um pedido. Chame assim que souber o "
+        "número do pedido; se ainda não tiver o e-mail/telefone, a ferramenta indica o que pedir ao cliente.",
         {"order_id": _ORDER_ID, "email_or_phone": _CONTACT},
-        ["order_id", "email_or_phone"],
+        ["order_id"],
     ),
     _fn(
         "check_return_eligibility",
         "Verifica se um pedido pode ser devolvido ou trocado, aplicando as regras da loja ao caso. "
-        "Exige número do pedido, e-mail ou telefone e o motivo.",
+        "Chame assim que souber o número do pedido; a ferramenta indica se falta o e-mail/telefone.",
         {
             "order_id": _ORDER_ID,
             "email_or_phone": _CONTACT,
             "reason": {"type": "string", "enum": ["arrependimento", "defeito", "preferencia"]},
         },
-        ["order_id", "email_or_phone", "reason"],
+        ["order_id", "reason"],
     ),
     _fn(
         "get_store_policy",
